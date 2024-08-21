@@ -1,144 +1,73 @@
-from rest_framework.test import APITestCase
 from django.urls import reverse
-
-from modules.serializers import ModuleSerializer
-from users.models import User
 from rest_framework import status
-
-from django.test import TestCase
+from rest_framework.test import APITestCase
 
 from modules.models import Module
+from users.models import User
 
 
-class ModuleTest(TestCase):
-    """Тест модели модуля"""
-
-    def setUp(self):
-        self.module = Module.objects.create(
-            number=1,
-            name='Test',
-            description='Test description'
-        )
-
-    def test_module_str(self):
-        self.assertEqual(str(self.module), 'Test')
-
-    def test_module_name(self):
-        module = Module.objects.get(number=1)
-        self.assertEqual(module.name, 'Test')
-
-
-class ModuleSerializerTest(TestCase):
-    """Тест ModuleSerializer"""
-
-    def setUp(self):
-        self.module = Module.objects.create(
-            number=1,
-            name='Test',
-            description='Test description'
-        )
-        self.serializer = ModuleSerializer(instance=self.module)
-
-    def test_contains_expected_fields(self):
-        data = self.serializer.data
-        self.assertEqual(set(data.keys()), set(['id', 'number', 'name', 'description', 'owner']))
-
-
+# Create your tests here.
 class ModuleTestCase(APITestCase):
-    """Test for Model Views"""
-
     def setUp(self):
-        self.user = User.objects.create(email='test@test.com', is_staff=True, is_superuser=True)
-        self.user.set_password('1234')
-        self.user.save()
-
-        response = self.client.post(
-            '/users/token/',
-            {'email': 'test@test.com', 'password': "1234"}
+        self.user = User.objects.create(email="helen597@yandex.ru")
+        self.user.set_password("59hl71ee")
+        self.client.force_authenticate(user=self.user)
+        self.module = Module.objects.create(
+            title="Module 1. Introduction",
+            description="Введение",
+            owner=self.user
         )
-        self.access_token = response.json().get('access')
-        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {self.access_token}')
 
-        self.data = {
-            'number': 1,
-            'name': 'Test',
-            'description': 'Test description',
+    def test_module_create(self):
+        """Test module creation"""
+        url = reverse("modules:module-list")
+        data = {
+            "title": "Module 2. Basics",
+            "description": "Основы",
+            "owner": self.user.pk,
         }
-
-    def test_create_module(self):
-        """Тестирование создания модуля"""
-        response = self.client.post(
-            reverse('modules:module_create'),
-            self.data
-        )
-        pk = Module.objects.all().latest('pk').pk
+        response = self.client.post(url, data)
+        print("\ntest_module_create")
+        print(response.json())
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(
-            response.json(),
-            {
-                "id": pk,
-                "number": 1,
-                "name": "Test",
-                "description": "Test description",
-                "owner": self.user.pk
-            }
-        )
+        self.assertEqual(Module.objects.all().count(), 2)
 
-    def test_list_modules(self):
-        """Тестирование вывода списка модулей"""
-        self.test_create_module()
-        response = self.client.get(reverse('modules:modules'))
+    def test_module_retrieve(self):
+        """Test module detail view"""
+        url = reverse("modules:module-detail", args=(self.module.pk,))
+        response = self.client.get(url)
+        print("\ntest_module_retrieve")
+        data = response.json()
+        print(data)
+        print(self.module)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(
-            response.json()['results'],
-            [
-                {
-                    "id": response.json()['results'][0]['id'],
-                    "number": 1,
-                    "name": "Test",
-                    "description": "Test description",
-                    "owner": self.user.pk
-                }
-            ]
-        )
+        self.assertEqual(data.get("title"), self.module.title)
 
-    def test_retrieve_module(self):
-        """Отображение одного модуля по ID"""
-        self.test_create_module()
-        pk = Module.objects.all().latest('pk').pk
-        response = self.client.get(f'/modules/{pk}/')
+    def test_module_update(self):
+        """Test module update"""
+        url = reverse("modules:module-detail", args=(self.module.pk,))
+        data = {"title": "Module 1. Present Simple"}
+        response = self.client.patch(url, data)
+        data = response.json()
+        print("\ntest_module_update")
+        print(response.json())
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(
-            response.json(),
-            {
-                "id": pk,
-                "number": 1,
-                "name": "Test",
-                "description": "Test description",
-                "owner": self.user.pk
-            }
-        )
+        self.assertEqual(data.get("title"), "Module 1. Present Simple")
 
-    def test_update_module(self):
-        """Тестирование обновления модуля"""
-        self.test_create_module()
-        pk = Module.objects.all().latest('pk').pk
-        response = self.client.patch(f'/modules/update/{pk}/', {'name': 'Test changed'})
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(
-            response.json(),
-            {
-                "id": pk,
-                "number": 1,
-                "name": "Test changed",
-                "description": "Test description",
-                "owner": self.user.pk
-            }
-        )
-
-    def test_destroy_module(self):
-        """Тестирование удаления модуля"""
-        self.test_create_module()
-        pk = Module.objects.all().latest('pk').pk
-        response = self.client.delete(f'/modules/delete/{pk}/')
+    def test_module_delete(self):
+        """Test module delete"""
+        url = reverse("modules:module-detail", args=(self.module.pk,))
+        # self.module.owner = self.user
+        response = self.client.delete(url)
+        print("\ntest_module_delete")
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertEqual(Module.objects.all().count(), 0)
+
+    def test_module_list(self):
+        """Test module list view"""
+        url = reverse("modules:module-list")
+        response = self.client.get(url)
+        print("\ntest_module_list")
+        print(response.json())
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(Module.objects.all().count(), 1)

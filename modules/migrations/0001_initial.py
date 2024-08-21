@@ -5,22 +5,39 @@ class Migration(migrations.Migration):
 
     initial = True
 
-    dependencies = [
-    ]
+    dependencies = []
 
     operations = [
         migrations.CreateModel(
-            name='Module',
+            name="Module",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('number', models.IntegerField(verbose_name='Порядковый номер')),
-                ('name', models.CharField(max_length=100, verbose_name='Название')),
-                ('description', models.TextField(blank=True, null=True, verbose_name='Описание')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("title", models.CharField(
+                    max_length=100,
+                    verbose_name="Название"
+                )),
+                (
+                    "description",
+                    models.CharField(
+                        blank=True,
+                        max_length=300,
+                        null=True,
+                        verbose_name="Описание"
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Модуль',
-                'verbose_name_plural': 'Модули',
-                'ordering': ('number',),
+                "verbose_name": "Образовательный модуль",
+                "verbose_name_plural": "Образовательные модули",
+                "ordering": ("title",),
             },
         ),
     ]

@@ -1,10 +1,8 @@
-from rest_framework import permissions
+from rest_framework.permissions import BasePermission
 
 
-class IsUser(permissions.BasePermission):
-    """ Проверка прав пользователя"""
-
-    def has_permission(self, request, view):
-        if request.user.is_staff:
+class IsOwner(BasePermission):
+    def has_object_permission(self, request, view, obj):
+        if obj.owner == request.user:
             return True
-        return request.user == view.get_object()
+        return False

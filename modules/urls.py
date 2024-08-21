@@ -1,11 +1,10 @@
-from django.urls import path
+from rest_framework.routers import DefaultRouter
 
-from modules.views import ModulesCreateAPIView, ModulesListAPIView, ModulesRetrieveAPIView, ModulesUpdateAPIView, ModulesDestroyAPIView
+from modules.apps import ModulesConfig
+from modules.views import ModuleViewSet
 
-urlpatterns = [
-    path('modules/create/', ModulesCreateAPIView.as_view(), name='module_create'),
-    path('modules/', ModulesListAPIView.as_view(), name='modules'),
-    path('modules/<int:pk>/', ModulesRetrieveAPIView.as_view(), name='module'),
-    path('modules/update/<int:pk>/', ModulesUpdateAPIView.as_view(), name='module_update'),
-    path('modules/delete/<int:pk>/', ModulesDestroyAPIView.as_view(), name='module_delete'),
-]
+app_name = ModulesConfig.name
+router = DefaultRouter()
+router.register(r"module", ModuleViewSet, basename="module")
+
+urlpatterns = [] + router.urls

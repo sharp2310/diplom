@@ -1,42 +1,63 @@
-from rest_framework import generics
-from rest_framework.permissions import AllowAny, IsAuthenticated
-
+from rest_framework.generics import (
+    CreateAPIView,
+    DestroyAPIView,
+    ListAPIView,
+    RetrieveAPIView,
+    UpdateAPIView,
+)
+from rest_framework.permissions import IsAuthenticated
+from rest_framework_simplejwt.views import TokenObtainPairView
 
 from users.models import User
-from users.permissions import IsUser
-from users.serializers import UserSerializer, UserRegisterSerializer
+from users.serializers import MyTokenObtainPairSerializer, UserSerializer
 
 
-class UserListAPIView(generics.ListAPIView):
-    """Представление для просмотра пользователей"""
+# Create your views here.
+class UserCreateAPIView(CreateAPIView):
+    """User creation controller"""
+
+    serializer_class = UserSerializer
+    queryset = User.objects.all()
+
+    def perform_create(self, serializer):
+        user = serializer.save(is_active=True)
+        user.set_password(user.password)
+        user.save()
+
+
+class MyTokenObtainPairView(TokenObtainPairView):
+    """User login controller"""
+
+    serializer_class = MyTokenObtainPairSerializer
+
+
+class UserUpdateAPIView(UpdateAPIView):
+    """User update controller"""
+
     serializer_class = UserSerializer
     queryset = User.objects.all()
     permission_classes = [IsAuthenticated]
 
 
-class UserCreateAPIView(generics.CreateAPIView):
-    """Представление для создания пользователя"""
-    serializer_class = UserRegisterSerializer
-    queryset = User.objects.all()
-    permission_classes = [AllowAny]
+class UserListAPIView(ListAPIView):
+    """User list controller"""
 
-
-class UserRetrieveAPIView(generics.RetrieveAPIView):
-    """Представление для просмотра одного пользователя"""
     serializer_class = UserSerializer
     queryset = User.objects.all()
-    permission_classes = [IsUser]
+    permission_classes = [IsAuthenticated]
 
 
-class UserUpdateAPIView(generics.UpdateAPIView):
-    """Представление для обновления пользователя"""
+class UserRetrieveAPIView(RetrieveAPIView):
+    """User retrieve controller"""
+
     serializer_class = UserSerializer
     queryset = User.objects.all()
-    permission_classes = [IsUser]
+    permission_classes = [IsAuthenticated]
 
 
-class UserDestroyAPIView(generics.DestroyAPIView):
-    """Представление для удаления пользователя"""
+class UserDestroyAPIView(DestroyAPIView):
+    """User delete controller"""
+
     serializer_class = UserSerializer
     queryset = User.objects.all()
-    permission_classes = [IsUser]
+    permission_classes = [IsAuthenticated]

@@ -1,50 +1,29 @@
-from rest_framework import generics
+from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
 
 from modules.models import Module
-from modules.pagination import ModulesPaginator
+from modules.paginators import MyPagination
 from modules.serializers import ModuleSerializer
+from users.permissions import IsOwner
 
 
-class ModulesCreateAPIView(generics.CreateAPIView):
-    """Создание модуля"""
-    serializer_class = ModuleSerializer
-    permission_classes = [IsAuthenticated]
+# Create your views here.
+class ModuleViewSet(viewsets.ModelViewSet):
+    """Educational module viewset controller"""
 
-    def perform_create(self, serializer):
-        new_module = serializer.save()
-        new_module.owner = self.request.user
-        new_module.save()
-
-
-class ModulesListAPIView(generics.ListAPIView):
-    """Вывод списка модулей"""
     serializer_class = ModuleSerializer
     queryset = Module.objects.all()
-    pagination_class = ModulesPaginator
+    pagination_class = MyPagination
 
+    def perform_create(self, serializer):
+        """Module creation function"""
+        module = serializer.save()
+        module.owner = self.request.user
+        module.save()
 
-class ModulesRetrieveAPIView(generics.RetrieveAPIView):
-    """Вывод одного модуля"""
-    serializer_class = ModuleSerializer
-    permission_classes = [IsAuthenticated]
-
-    def get_queryset(self):
-        return Module.objects.filter(owner=self.request.user)
-
-
-class ModulesUpdateAPIView(generics.UpdateAPIView):
-    """Обновление модуля"""
-    serializer_class = ModuleSerializer
-    permission_classes = [IsAuthenticated]
-
-    def get_queryset(self):
-        return Module.objects.filter(owner=self.request.user)
-
-
-class ModulesDestroyAPIView(generics.DestroyAPIView):
-    """Удаление модуля"""
-    permission_classes = [IsAuthenticated]
-
-    def get_queryset(self):
-        return Module.objects.filter(owner=self.request.user)
+    def get_permissions(self):
+        if self.action in ["destroy", "update", "partial_update"]:
+            self.permission_classes = [IsAuthenticated, IsOwner]
+        elif self.action in ["retrieve", "create"]:
+            self.permission_classes = [IsAuthenticated]
+        return super().get_permissions()
