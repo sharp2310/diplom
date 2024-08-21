@@ -12,7 +12,7 @@
 Полностью покрыть автоматизированными юнит-тестами все модели, сериализаторы, виды.
 Для запуска проекта:
 Установите Docker и docker-compose
-Склонируйте репозиторий git@github.com:helen597/diplom_educational_modules.git
+Склонируйте репозиторий github.com/sharp2310/diplom
 Перейдите в папку с прооектом
 Введите команду: sudo docker-compose up -d --build
 Документация API доступна после запуска сервера по адресу: http://localhost:8000/redoc/ или http://localhost:8000/swagger/
