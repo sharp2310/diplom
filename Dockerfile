@@ -1,9 +1,9 @@
-FROM python:3.12-slim
+FROM python:3.11
 
-WORKDIR /modules
+WORKDIR /code
 
-COPY ./requirements.txt .
+COPY ./requirements.txt /code/
 
-RUN pip install -r requirements.txt --no-cache-dir
+RUN pip install -r /code/requirements.txt
 
 COPY . .

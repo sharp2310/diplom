@@ -1,25 +1,30 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
+from django.utils.translation import gettext_lazy as _
 
-NULLABLE = {"null": True, "blank": True}
+from .managers import CustomUserManager
+
+NULLABLE = {'blank': True, 'null': True}
 
 
-# Create your models here.
 class User(AbstractUser):
+    """
+    Модель пользователя сервисом.
+    """
     username = None
-    email = models.EmailField(unique=True, verbose_name="почта")
-    phone = models.CharField(max_length=35, verbose_name="телефон", **NULLABLE)
-    avatar = models.ImageField(
-        upload_to="users/", verbose_name="аватар", **NULLABLE
-    )
-    is_active = models.BooleanField(default=False, verbose_name="активен")
+
+    email = models.EmailField(_("email address"), unique=True)
+    phone = models.CharField(max_length=35, verbose_name='Телефон', **NULLABLE)
+    telegram_id = models.CharField(max_length=50, verbose_name='телеграм_ID', **NULLABLE)
+
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []
 
+    objects = CustomUserManager()
+
     def __str__(self):
-        return f"{self.email}"
+        return self.email
 
     class Meta:
-        verbose_name = "пользователь"
-        verbose_name_plural = "пользователи"
-        ordering = ("email",)
+        verbose_name = 'Пользователь'
+        verbose_name_plural = 'Пользователи'
