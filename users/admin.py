@@ -1,8 +1,10 @@
 from django.contrib import admin
-from .models import User
+from users.models import User
 
 
 @admin.register(User)
-class UserAdmin(admin.ModelAdmin):
-    list_display = ('pk', 'email', 'phone', 'telegram_id', 'is_active')
-    list_display_links = ('email', 'phone', 'telegram_id')
+class AdminUser(admin.ModelAdmin):
+    """ Админка пользователей """
+    list_display = ('email', 'first_name', 'last_name', 'telegram', 'is_active')
+    search_fields = ('email', 'first_name', 'last_name', 'telegram')
+    list_filter = ('email', 'first_name', 'last_name', 'telegram')
