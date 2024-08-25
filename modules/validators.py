@@ -1,30 +1,31 @@
-import re
-from rest_framework.serializers import ValidationError
-from rest_framework import serializers
+from rest_framework_simplejwt import serializers
+
+FORBIDDEN_WORDS = [
+    'дурак',
+    'криптовалюта',
+    'биткоин',
+    'наркотики',
+    'убийство',
+]
 
 
-class LinkValidator:
+class ForbiddenWordsValidator:
+    """ Валидатор проверяющий наличие запрещенных слов в поле field """
     def __init__(self, field):
         self.field = field
-        self.regex = r'^(http|https)://[^\s/$.?#].[^\s]*$'  # Регулярное выражение для ссылок
-        self.reg = re.compile(self.regex)
 
-    def __call__(self, value):
-        if value is not None:  # Проверка, чтобы валидировать только если значение не None
-            if not isinstance(value, str):
-                raise serializers.ValidationError("Значение должно быть строкой.")
-            if not bool(self.reg.match(value)):
-                raise serializers.ValidationError("Недопустимое значение.")
+    def __call__(self, attrs):
+        value = attrs.get(self.field)
+        if value and any(word in value for word in FORBIDDEN_WORDS):
+            raise serializers.ValidationError(f'Недопустимые слова в {self.field}')
 
 
-class CustomValidator:
-    def init(self, regex):
-        self.regex = regex
-        self.reg = re.compile(self.regex)
+class YoutubeUrlValidator:
+    """ Валидатор проверяющий ссылку на видео """
+    def __init__(self, field):
+        self.field = field
 
-    def call(self, value):
-        if value is not None:  # Проверка, чтобы валидировать только если значение не None
-            if not isinstance(value, str):
-                raise serializers.ValidationError("Значение должно быть строкой.")
-            if not bool(self.reg.match(value)):
-                raise serializers.ValidationError("Недопустимое значение.")
+    def __call__(self, attrs):
+        url = attrs.get(self.field)
+        if url and not url.startswith('https://www.youtube.com/watch?v='):
+            raise serializers.ValidationError('Недопустимая ссылка на видео')

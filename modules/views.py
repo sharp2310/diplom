@@ -1,38 +1,32 @@
-from django.views.generic import TemplateView
 from rest_framework import status
 from rest_framework.generics import CreateAPIView, ListAPIView, RetrieveAPIView, DestroyAPIView, UpdateAPIView, \
-    get_object_or_404, RetrieveUpdateAPIView
+    get_object_or_404
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 
-from modules.models import Module, Subscription, Lesson
+from modules.models import Module, Subscription
 from modules.paginators import ModulePagination
-from modules.permissions import IsOwnerOrAdmin
-from modules.serializers import ModuleSerializer, SubscriptionSerializer, LessonSerializer
+from modules.permissions import IsOwner, IsModerator, IsCustomAdmin
+from modules.serializers import ModuleSerializer, SubscriptionSerializer
 from rest_framework.response import Response
 
+from modules.tasks import send_mail_notification_module_changed
 
-class IndexView(TemplateView):
-    """Контроллер просмотра домашней страницы"""
-    template_name = 'modules/index.html'
 
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        context['modules'] = Module.objects.all()  # Получаем все модули
-        return context
+# Create your views here.
+
 
 class ModuleCreateAPIView(CreateAPIView):
     """ Создание модуля """
     serializer_class = ModuleSerializer
-    permission_classes = [IsOwnerOrAdmin]
+    permission_classes = [IsAuthenticated]
 
     def perform_create(self, serializer):
-        # Устанавливаем владельца модуля как текущего пользователя
         serializer.save(owner=self.request.user)
 
 
 class ModuleListAPIView(ListAPIView):
-    """ Контроллер просмотра списка модулей """
+    """ Список модулей """
     serializer_class = ModuleSerializer
     queryset = Module.objects.all()
     pagination_class = ModulePagination
@@ -42,78 +36,74 @@ class ModuleDetailAPIView(RetrieveAPIView):
     """ Подробная информация о модуле """
     serializer_class = ModuleSerializer
     queryset = Module.objects.all()
-    permission_classes = [IsAuthenticated]
-
-class ModuleDestroyAPIView(DestroyAPIView):
-    """ Удаление модуля """
-    serializer_class = ModuleSerializer
-    queryset = Module.objects.all()
-    permission_classes = [IsOwnerOrAdmin]
-
-
-class ModuleUpdateAPIView(UpdateAPIView):
-    """ Редактирование модуля """
-    serializer_class = ModuleSerializer
-    queryset = Module.objects.all()
-    permission_classes = [IsOwnerOrAdmin]
-
-    def perform_update(self, serializer):
-        """ Обновление модуля """
-        serializer.save()
-
-    def put(self, request, *args, **kwargs):
-        return self.update(request, *args, **kwargs)
-
-    def patch(self, request, *args, **kwargs):
-        return self.partial_update(request, *args, **kwargs)
-
-class LessonCreateAPIView(CreateAPIView):
-    """Создание урока"""
-    serializer_class = LessonSerializer
-    permission_classes = [IsOwnerOrAdmin]
-
-    def perform_create(self, serializer):
-        # Устанавливаем владельца модуля как текущего пользователя
-        serializer.save(owner=self.request.user)
-
-
-class LessonListAPIView(ListAPIView):
-    """Список уроков"""
-    serializer_class = LessonSerializer
-    queryset = Lesson.objects.all()
-
-
-class LessonDetailAPIView(RetrieveAPIView):
-    """Подробная информация об уроке"""
-    serializer_class = LessonSerializer
-    queryset = Lesson.objects.all()
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsOwner | IsModerator | IsCustomAdmin]
 
     def get_object(self):
-        """Подсчет просмотров"""
+        """ Подсчет просмотров """
         data = super().get_object()
         data.views_count += 1
         data.save()
         return data
 
 
-class LessonDestroyAPIView(DestroyAPIView):
-    """Удаление урока"""
-    serializer_class = LessonSerializer
-    queryset = Lesson.objects.all()
-    permission_classes = [IsOwnerOrAdmin]
+class ModuleDestroyAPIView(DestroyAPIView):
+    """ Удаление модуля """
+    serializer_class = ModuleSerializer
+    queryset = Module.objects.all()
+    permission_classes = [IsOwner | IsCustomAdmin]
 
-class LessonUpdateAPIView(RetrieveUpdateAPIView):
-    """Редактирование урока"""
-    serializer_class = LessonSerializer
-    queryset = Lesson.objects.all()
-    permission_classes = [IsOwnerOrAdmin]
+
+class ModuleUpdateAPIView(UpdateAPIView):
+    """ Редактирование модуля """
+    serializer_class = ModuleSerializer
+    queryset = Module.objects.all()
+    permission_classes = [IsOwner | IsModerator | IsCustomAdmin]
+
+    def perform_update(self, serializer):
+        """ Отправка письма при изменении модуля """
+        module = serializer.instance
+        old_name = module.name
+
+        for field in self.request.data:
+            if hasattr(module, field):
+                setattr(module, field, self.request.data.get(field))
+
+        module.save()
+
+        subscriptions = Subscription.objects.filter(module=module).select_related('user', 'module')
+        for subscription in subscriptions:
+            send_mail_notification_module_changed.delay(subscription.user.email, old_name)
 
     def put(self, request, *args, **kwargs):
         return self.update(request, *args, **kwargs)
 
     def patch(self, request, *args, **kwargs):
         return self.partial_update(request, *args, **kwargs)
+
+
+class SetLikeAPIView(APIView):
+    """ Поставить лайк для модуля """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, module_id):
+        """ Поставить лайк """
+        try:
+            module = Module.objects.get(pk=module_id)
+            user = request.user
+
+            if user in module.liked_users.all():
+                return Response(
+                    {'error': 'Вы уже поставили лайк для этого модуля'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            else:
+                module.likes += 1
+                module.liked_users.add(user)
+                module.save()
+                return Response({'message': 'Лайк успешно поставлен'}, status=status.HTTP_200_OK)
+        except Module.DoesNotExist:
+            return Response({'error': 'Модуль не найден'}, status=status.HTTP_404_NOT_FOUND)
+
 
 class SubscriptionView(APIView):
     """ Подписка на модуль """
@@ -132,11 +122,9 @@ class SubscriptionView(APIView):
         else:
             return Response({'error': 'Модуль не найден'}, status=status.HTTP_404_NOT_FOUND)
 
-class SubscriptionListAPIView(ListAPIView):
-    """ Список подписок для текущего пользователя """
-    serializer_class = SubscriptionSerializer
-    permission_classes = [IsAuthenticated]  # Убедитесь, что пользователь аутентифицирован
 
-    def get_queryset(self):
-        user = self.request.user
-        return Subscription.objects.filter(user=user)  # Возвращаем подписки только для текущего пользователя
+class SubscriptionListAPIView(ListAPIView):
+    """ Список подписок """
+    serializer_class = SubscriptionSerializer
+    queryset = Subscription.objects.all()
+    permission_classes = [IsModerator | IsCustomAdmin]

@@ -1,20 +1,21 @@
-import os
-
+from django.conf import settings
 from django.core.management import BaseCommand
-from users.models import User
+from users.models import User, UserRoles
 
 
 class Command(BaseCommand):
-    """Создание superuser"""
 
     def handle(self, *args, **options):
+        """ Создает пользователя супервайзера """
         user = User.objects.create(
-            email="admin@educate.ru",
+            email=settings.ROOT_EMAIL,
             first_name='root',
             last_name='admin',
-            is_staff=True,
             is_superuser=True,
+            is_staff=True,
             is_active=True,
+            role=UserRoles.ADMINISTRATOR
         )
-        user.set_password(os.getenv("ADMIN_PASSWORD"))
+
+        user.set_password(settings.ROOT_PASSWORD)
         user.save()

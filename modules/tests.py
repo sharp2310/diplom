@@ -1,205 +1,306 @@
-from rest_framework.test import APIClient, APITestCase
+import os
+
 from rest_framework import status
-from django.urls import reverse
+from rest_framework.test import APITestCase, APIClient
+
+from modules.models import Module, Subscription
+from modules.serializers import ModuleSerializer
+from rest_framework import serializers
+from modules.validators import ForbiddenWordsValidator, YoutubeUrlValidator
 from users.models import User
-from modules.models import Module, Lesson, Subscription
 
-class ModuleAPITestCase(APITestCase):
+from users.models import UserRoles
+from rest_framework.exceptions import PermissionDenied
+from unittest.mock import Mock
+from modules.permissions import IsOwner, IsModerator, IsCustomAdmin
 
-    @classmethod
-    def setUpTestData(cls):
-        # Создаем пользователей
-        cls.user = User.objects.create_user(email='user@educate.com', password='password', is_active=True)
+from django.test import override_settings
 
-        # Создаем администратора
-        cls.admin_user = User.objects.create_superuser(email='admin@educate.com', password='adminpassword')
-
-        # Создаем клиент для тестирования
-        cls.client = APIClient()
-
-        # Создаем модуль, владельцем которого является обычный пользователь
-        cls.module = Module.objects.create(
-            title='Test Module',
-            description='Original description',
-            owner=cls.user
-        )
-
-    def test_module_update_by_owner(self):
-        """Тест обновления модуля пользователем-владельцем"""
-        self.client.force_authenticate(user=self.user)  # Аутентификация пользователя
-        url = reverse('modules:module_update', kwargs={'pk': self.module.pk})
-
-        new_data = {'description': 'Updated description'}
-        response = self.client.patch(url, data=new_data)
-
-        self.assertEqual(response.status_code, status.HTTP_200_OK)  # Проверка статуса
-        self.module.refresh_from_db()  # Обновление данных модуля из базы данных
-        self.assertEqual(self.module.description, 'Updated description')  # Проверка обновленного значения
-
-    def test_module_update_by_admin(self):
-        """Тест обновления модуля администратором"""
-        self.client.force_authenticate(user=self.admin_user)  # Аутентификация администратора
-        url = reverse('modules:module_update', kwargs={'pk': self.module.pk})
-
-        new_data = {'description': 'Admin updated description'}
-        response = self.client.patch(url, data=new_data)
-
-        self.assertEqual(response.status_code, status.HTTP_200_OK)  # Проверка статуса
-        self.module.refresh_from_db()  # Обновление данных модуля из базы данных
-        self.assertEqual(self.module.description, 'Admin updated description')  # Проверка обновленного значения
-
-    def test_module_update_by_unauthorized_user(self):
-        """Тест обновления модуля неавторизованным пользователем"""
-        unauthenticated_user = User.objects.create_user(email='unauth@educate.com', password='password', is_active=True)
-        self.client.force_authenticate(user=unauthenticated_user)  # Аутентификация не владельцем
-        url = reverse('modules:module_update', kwargs={'pk': self.module.pk})
-
-        new_data = {'description': 'Unauthorized update'}
-        response = self.client.patch(url, data=new_data)
-
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-
-    def test_module_update_without_authentication(self):
-        """Тест обновления модуля без аутентификации"""
-        url = reverse('modules:module_update', kwargs={'pk': self.module.pk})
-
-        new_data = {'description': 'No auth update'}
-        response = self.client.patch(url, data=new_data)
-
-        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
-
-class LessonAPITestCase(APITestCase):
-
-    @classmethod
-    def setUpTestData(cls):
-        # Создание администратора
-        cls.admin_user = User.objects.create_user(email='admin@educate.com', password='password')
-        # Создание обычного пользователя
-        cls.regular_user = User.objects.create_user(email='user@educate.com', password='password')
-        # Создание модуля, который будет использоваться в тестах
-        cls.module = Module.objects.create(title='Test Module', owner=cls.admin_user)
-
-    def test_lesson_create_by_admin(self):
-        """Тест создания урока администратором"""
-        self.client.force_authenticate(user=self.admin_user)
-        url = reverse('modules:lesson_create')
-        new_data = {
-            'title': 'New Lesson Title',
-            'description': 'Admin created lesson',
-            'module': self.module.pk,
-            'video_link': 'http://www.youtube.com/video.mp4',
-        }
-        response = self.client.post(url, new_data)
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-
-    def test_lesson_update_by_admin(self):
-        """Тест редактирования урока администратором"""
-        self.client.force_authenticate(user=self.admin_user)
-        lesson = Lesson.objects.create(
-            title='Original Lesson',
-            description='Original description',
-            module=self.module,
-            video_link='http://www.youtube.com/original_video.mp4',
-            owner=self.admin_user
-        )
-        url = reverse('modules:lesson_update', args=[lesson.pk])
-        updated_data = {
-            'title': 'Updated Lesson Title',
-            'description': 'Updated description',
-            'module': self.module.pk,
-            'video_link': 'http://www.youtube.com/updated_video.mp4',
-        }
-        response = self.client.put(url, updated_data)
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        lesson.refresh_from_db()
-        self.assertEqual(lesson.title, 'Updated Lesson Title')
-        self.assertEqual(lesson.description, 'Updated description')
-
-    def test_lesson_delete_by_admin(self):
-        """Тест удаления урока администратором"""
-        self.client.force_authenticate(user=self.admin_user)
-        lesson = Lesson.objects.create(
-            title='Lesson to be deleted',
-            description='This lesson will be deleted.',
-            module=self.module,
-            video_link='http://www.youtube.com/video_to_delete.mp4',
-            owner=self.admin_user
-        )
-        url = reverse('modules:lesson_delete', args=[lesson.pk])
-        response = self.client.delete(url)
-        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
-        with self.assertRaises(Lesson.DoesNotExist):
-            lesson.refresh_from_db()
-
-    def test_lesson_update_by_user(self):
-        """Тест редактирования урока пользователем"""
-        self.client.force_authenticate(user=self.regular_user)
-        # Создаем урок, который будет редактироваться
-        lesson = Lesson.objects.create(
-            title='Lesson to be updated',
-            description='This lesson will be updated.',
-            module=self.module,
-            video_link='http://www.youtube.com/lesson_to_be_updated.mp4',
-            owner=self.admin_user  # Урок принадлежит администратору
-        )
-        url = reverse('modules:lesson_update', args=[lesson.pk])  # URL для обновления
-        updated_data = {
-            'title': 'Updated Lesson Title by User',
-            'description': 'Updated description by user',
-            'module': self.module.pk,
-            'video_link': 'http://www.youtube.com/updated_video_by_user.mp4',
-        }
-        response = self.client.put(url, updated_data)
-        # Проверка на неудачное обновление, так как пользователь не является владельцем
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-
-    def test_lesson_delete_by_user(self):
-        """Тест удаления урока пользователем"""
-        self.client.force_authenticate(user=self.regular_user)
-        # Создаем урок, который будет удаляться
-        lesson = Lesson.objects.create(
-            title='Lesson to be deleted',
-            description='This lesson will be deleted.',
-            module=self.module,
-            video_link='http://www.youtube.com/video_to_delete.mp4',
-            owner=self.admin_user  # Урок принадлежит администратору
-        )
-        url = reverse('modules:lesson_delete', args=[lesson.pk])
-        response = self.client.delete(url)
-        # Проверка на неудачное удаление, так как пользователь не является владельцем
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+from django.test import TestCase
+from modules.tasks import send_mail_notification_module_changed
+from unittest.mock import patch
 
 
-class SubscriptionAPITestCase(APITestCase):
+class ModuleTestCase(APITestCase):
     def setUp(self):
-        self.user = User.objects.create(email='admin@educate.ru')
-        self.user.set_password('adminpassword')
-        self.user.is_superuser = True
-        self.user.is_staff = True
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            email='test@ya.ru',
+            password='test12345',
+        )
         self.user.save()
+        self.client.force_authenticate(user=self.user)
+
+    def test_create_module(self):
+        response = self.client.post(
+            '/modules/create/', {
+                'user': self.user.pk,
+                'name': 'test',
+                'description': 'test',
+                'serial_number': 1
+            }
+        )
+        print(response.json())
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(Module.objects.count(), 1)
+        self.assertEqual(Module.objects.get().name, 'test')
+        self.assertEqual(response.json()['name'], 'test')
+
+    def test_list_module(self):
+        data = {
+            'user': self.user.pk,
+            'name': 'test',
+            'description': 'test',
+            'serial_number': 1
+        }
+
+        response = self.client.post('/modules/create/', data)
+        print(response.json())
+
+        response = self.client.get('/modules/list/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.json()), 4)
+
+    def test_detail_module(self):
+        data = {
+            'user': self.user.pk,
+            'name': 'test',
+            'description': 'test',
+            'serial_number': 1
+        }
+
+        response = self.client.post('/modules/create/', data)
+        print(response.json())
+
+        response = self.client.get('/modules/detail/1/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.json()['name'], 'test')
+
+    def test_delete_module(self):
+        data = {
+            'user': self.user.pk,
+            'name': 'test',
+            'description': 'test',
+            'serial_number': 1
+        }
+
+        response = self.client.post('/modules/create/', data)
+        print(response.json())
+
+        response = self.client.delete('/modules/delete/1/')
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+    def test_update_module(self):
+        data = {
+            'user': self.user.pk,
+            'name': 'test',
+            'description': 'test',
+            'serial_number': 1
+        }
+
+        response = self.client.post('/modules/create/', data)
+        print(response.json())
+
+        data_update = {
+            'user': self.user.pk,
+            'name': 'test_update',
+            'description': 'test_update',
+            'serial_number': 1
+        }
+
+        response = self.client.put('/modules/update/1/', data_update)
+        print(response.json())
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.json()['name'], 'test_update')
+
+    def test_like(self):
+        data = {
+            'user': self.user.pk,
+            'name': 'test',
+            'description': 'test',
+            'serial_number': 1,
+            'likes': 0
+        }
+
+        response = self.client.post('/modules/create/', data)
+        print(response.json())
+
+        response = self.client.post('/modules/like/1/')
+        print(response.json())
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_create_module_with_serial_number(self):
+        response = self.client.post(
+            '/modules/create/', {
+                'user': self.user.pk,
+                'name': 'test',
+                'description': 'test',
+                'serial_number': 1
+            }
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(Module.objects.count(), 1)
+        self.assertEqual(Module.objects.get().name, 'test')
+        self.assertEqual(response.json()['name'], 'test')
+
+        response = self.client.post(
+            '/modules/create/', {
+                'user': self.user.pk,
+                'name': 'test2',
+                'description': 'test2',
+                'serial_number': 2
+            }
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(Module.objects.count(), 2)
+        self.assertEqual(Module.objects.last().name, 'test2')
+        self.assertEqual(response.json()['name'], 'test2')
+
+    def test_module_serializer_validators(self):
+        module_data = {
+            'name': 'Test Module',
+            'description': 'This is a test module',
+            'url_video': 'https://www.youtube.com/watch?v=12345'
+        }
+        context = {'request': self.client.request().wsgi_request}
+        serializer = ModuleSerializer(data=module_data, context=context)
+        self.assertTrue(serializer.is_valid())
+
+    def test_module_serializer_invalidators(self):
+        module_data = {
+            'name': 'Test Module',
+            'description': 'This is a test module',
+            'url_video': 'invalid_url'
+        }
+        context = {'request': self.client.request().wsgi_request}
+        serializer = ModuleSerializer(data=module_data, context=context)
+        self.assertFalse(serializer.is_valid())
+
+
+class SubscriptionTestCase(APITestCase):
+    def setUp(self):
+        self.user1 = User.objects.create_user(email='user1@example.com', password='password1')
+        self.user2 = User.objects.create_user(email='user2@example.com', password='password2')
+        self.module = Module.objects.create(name='Test Module', description='Test Description', owner=self.user1)
+
+    def test_subscription_creation(self):
+        subscription = Subscription.objects.create(user=self.user2, module=self.module)
+        print(subscription)
+        self.assertEqual(subscription.user, self.user2)
+        self.assertEqual(subscription.module, self.module)
+
+    def test_subscription_str_method(self):
+        subscription = Subscription.objects.create(user=self.user2, module=self.module)
+        self.assertEqual(str(subscription), f'{self.user2} - {self.module}')
+
+    def test_subscription_unique_together_constraint(self):
+        with self.assertRaises(Exception):
+            Subscription.objects.create(user=self.user2, module=self.module)
+            Subscription.objects.create(user=self.user2, module=self.module)
+
+
+class PermissionsTestCase(APITestCase):
+    def setUp(self):
+        self.user = Mock()
+        self.view = Mock()
+
+    def test_is_owner_permission(self):
+        permission = IsOwner()
+        obj = Mock(owner=self.user)
+
+        request = Mock(user=self.user)
+
+        self.assertTrue(permission.has_object_permission(request, self.view, obj))
+
+        other_user = Mock()
+        request.user = other_user
+        self.assertFalse(permission.has_object_permission(request, self.view, obj))
+
+    def test_is_moderator_permission(self):
+        permission = IsModerator()
+
+        moderator_user = Mock(is_authenticated=True, role=UserRoles.MODERATOR)
+        request_moderator = Mock(user=moderator_user)
+
+        self.assertTrue(permission.has_permission(request_moderator, self.view))
+
+        regular_user = Mock(is_authenticated=True, role=UserRoles.MEMBER)
+        request_regular_user = Mock(user=regular_user)
+
+        self.assertFalse(permission.has_permission(request_regular_user, self.view))
+
+        request_not_authenticated = Mock(user=Mock(is_authenticated=False))
+        with self.assertRaises(PermissionDenied):
+            permission.has_permission(request_not_authenticated, self.view)
+
+    def test_is_custom_admin_permission(self):
+        permission = IsCustomAdmin()
+
+        admin_user = Mock(is_authenticated=True, role=UserRoles.ADMINISTRATOR)
+        request_admin = Mock(user=admin_user)
+
+        self.assertTrue(permission.has_permission(request_admin, self.view))
+
+        moderator_user = Mock(is_authenticated=True, role=UserRoles.MODERATOR)
+        request_moderator = Mock(user=moderator_user)
+
+        self.assertFalse(permission.has_permission(request_moderator, self.view))
+
+        request_not_authenticated = Mock(user=Mock(is_authenticated=False))
+        with self.assertRaises(PermissionDenied):
+            permission.has_permission(request_not_authenticated, self.view)
+
+
+class SendMailNotificationTestCase(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email='test@ya.ru',
+            password='test12345',
+        )
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
-        self.module = Module.objects.create(title="Робототехника для детей")
 
-    def test_subscribe(self):
-        url = reverse('modules:module_subscription', args=[self.module.pk])
-        data = {
-            "module": self.module.pk
-        }
-        response = self.client.post(url, data=data)
-        data = response.json()
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        # Обновлено сообщение
-        self.assertEqual(data, {'message': 'Подписка оформлена'})
+    @override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+    def test_send_mail_notification_module_changed(self):
+        user_email = 'test@example.com'
+        module_name = 'Test Module'
+        test_email = os.getenv('EMAIL_HOST_USER')
 
-    def test_unsubscribe(self):
-        url = reverse('modules:module_subscription', args=[self.module.pk])
-        data = {
-            "module": self.module.pk
-        }
-        Subscription.objects.create(module=self.module, user=self.user)
-        response = self.client.post(url, data=data)
-        data = response.json()
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        # Обновлено сообщение
-        self.assertEqual(data, {'message': 'Подписка отменена'})
+        with patch('modules.tasks.send_mail') as mock_send_mail:
+            send_mail_notification_module_changed(user_email, module_name)
+
+            mock_send_mail.assert_called_once_with(
+                'Уведомление о изменении модуля на портале "Образовательные Модули".',
+                f'Модуль "{module_name}" на который вы подписаны был изменен.',
+                test_email,
+                [user_email],
+            )
+
+        self.assertEqual(mock_send_mail.call_count, 1)
+
+
+class ValidatorsTestCase(TestCase):
+    def test_forbidden_words_validator(self):
+        forbidden_words_validator = ForbiddenWordsValidator(field='content')
+
+        with self.assertRaises(serializers.ValidationError) as context:
+            forbidden_words_validator({'content': 'This message contains the word дурак'})
+        self.assertIn('Недопустимые слова в content', str(context.exception))
+
+        try:
+            forbidden_words_validator({'content': 'This message is clean'})
+        except serializers.ValidationError:
+            self.fail('forbidden_words_validator raised ValidationError unexpectedly!')
+
+    def test_youtube_url_validator(self):
+        youtube_url_validator = YoutubeUrlValidator(field='video_url')
+
+        with self.assertRaises(serializers.ValidationError) as context:
+            youtube_url_validator({'video_url': 'https://www.invalidurl.com'})
+
+        self.assertIn('Недопустимая ссылка на видео', str(context.exception))
+
+        try:
+            youtube_url_validator({'video_url': 'https://www.youtube.com/watch?v=validvideoid'})
+        except serializers.ValidationError:
+            self.fail('youtube_url_validator raised ValidationError unexpectedly!')
